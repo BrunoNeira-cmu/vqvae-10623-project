@@ -25,11 +25,8 @@ class VQVAE(nn.Module):
             self.img_to_embedding_map = {i: [] for i in range(n_embeddings)}
         else:
             self.img_to_embedding_map = None
-
     def forward(self, x, verbose=False):
-
         z_e = self.encoder(x)
-
         z_e = self.pre_quantization_conv(z_e)
         embedding_loss, z_q, perplexity, _, _ = self.vector_quantization(
             z_e)

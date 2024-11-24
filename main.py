@@ -5,6 +5,8 @@ import torch.optim as optim
 import argparse
 import utils
 from models.vqvae import VQVAE
+from models.text_to_image_vqvae import Grounded_VQVAE
+from transformers import CLIPConfig
 
 parser = argparse.ArgumentParser()
 
@@ -46,8 +48,12 @@ training_data, validation_data, training_loader, validation_loader, x_train_var 
 Set up VQ-VAE model with components defined in ./models/ folder
 """
 
-model = VQVAE(args.n_hiddens, args.n_residual_hiddens,
+fake_model = VQVAE(args.n_hiddens, args.n_residual_hiddens,
               args.n_residual_layers, args.n_embeddings, args.embedding_dim, args.beta).to(device)
+
+config = CLIPConfig()
+model = Grounded_VQVAE(args.n_hiddens, args.n_residual_hiddens, args.n_residual_layers,
+    args.n_embeddings, args.embedding_dim, args.beta, None, None, config).to(device)
 
 """
 Set up optimizer and training loop
@@ -71,7 +77,11 @@ def train():
         x = x.to(device)
         optimizer.zero_grad()
 
+        # _, _, _ = fake_model(x)
+        x = torch.tensor(["Welcome to the NHK!"] * 32)
         embedding_loss, x_hat, perplexity = model(x)
+        print("Ok!")
+        exit(0)
         recon_loss = torch.mean((x_hat - x)**2) / x_train_var
         loss = recon_loss + embedding_loss
 

@@ -53,7 +53,7 @@ fake_model = VQVAE(args.n_hiddens, args.n_residual_hiddens,
 
 config = CLIPConfig()
 model = Grounded_VQVAE(args.n_hiddens, args.n_residual_hiddens, args.n_residual_layers,
-    args.n_embeddings, args.embedding_dim, args.beta, None, None, config).to(device)
+    args.n_embeddings, args.embedding_dim, args.beta, None, config).to(device)
 
 """
 Set up optimizer and training loop

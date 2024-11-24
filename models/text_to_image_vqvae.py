@@ -60,8 +60,7 @@ class Fusion_VQVAE(Grounded_VQVAE):
     def __init__(self, h_dim, res_h_dim, n_res_layers,
                  n_embeddings, embedding_dim, beta,
                  codebook_dict, decoder_dict, clip_config, fusion_fn):
-        # Initialize a Grounded_VQVAE
-        super().__init__(h_dim, res_h_dim, n_res_layers, n_embeddings, embedding_dim, beta, None, clip_config)
+        super().__init__()
         # Initialize CLIP Image Processor
         self.processor    = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
         # Initialize fusion module; Type will be (x,y) -> z
@@ -90,14 +89,52 @@ class Fusion_VQVAE(Grounded_VQVAE):
         # Assuming input is fused and/or grounded, pass into the VQVAE
         return super().forward(x)
 
-class LoRA_Grounded_VQVAE(Grounded_VQVAE):
+class Embedding_VQVAE(nn.Module):
     def __init__(self, h_dim, res_h_dim, n_res_layers,
                  n_embeddings, embedding_dim, beta,
-                 codebook_dict, decoder_dict, clip_config, fusion_fn):
+                 vqvae_dict, encoder_dict, clip_config):
         # Initialize a Grounded_VQVAE
-        super().__init__(h_dim, res_h_dim, n_res_layers, n_embeddings, embedding_dim, beta, None, clip_config)
-        # Initialize CLIP Image Processor
-        self.processor    = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        super().__init__()
+        # Initialize CLIP Encoder and tokenizer
+        self.clip_encoder  = CLIPModel(clip_config)
+        self.tokenizer     = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+        # Initialize VQVAE Encoder
+        self.vqvae_encoder = Encoder(3, h_dim, n_res_layers, res_h_dim)
+        self.pre_quantization_conv = nn.Conv2d(h_dim, embedding_dim, kernel_size=1, stride=1)
+        # Initialize a VQVAE
+        self.vqvae         = VQVAE(h_dim, res_h_dim, n_res_layers, n_embeddings, embedding_dim, beta)
+        # Initialize t2i linear
+        self.t2i_embedding_linear = nn.Linear(clip_config.projection_dim, clip_config.projection_dim)
         """
         TODO: Load in pre-trained VQVAE AND Freeze CLIP Modules
         """
+
+    def _training_forward(self, x, y):
+        # Encode our text
+        inputs = self.tokenizer(x, padding=True, return_tensors="pt")
+        text_features = self.clip_encoder.get_text_features(**inputs)
+        # Get the projection of our text features into the image embedding space
+        text_emb = self.t2i_embedding_linear(text_features)
+        # Encode our image with VQVAE
+        img_emb  = self.pre_quantization_conv(self.vqvae_encoder(y))
+        """
+        TODO: Figure out dimensions here
+        TODO: We only return the text and image embeddings, since our loss is minimize the l2 distance between them for a given (x,y) pair
+        """
+        return text_emb, img_emb
+
+
+    def forward(self, x):
+        """
+        Note: We reserve the normal forward call for text 2 image generation
+        """
+        # Encode our text
+        inputs = self.tokenizer(x, padding=True, return_tensors="pt")
+        text_features = self.clip_encoder.get_text_features(**inputs)
+        # Project into img embedding dimension
+        embd = self.t2i_embedding_linear(text_features)
+        """
+        TODO: Figure out dimensions here
+        """
+        # Pass through VQVAE
+        return self.vqvae(embd)
